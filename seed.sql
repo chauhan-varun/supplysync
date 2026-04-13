@@ -1,40 +1,41 @@
--- Mock Entities
-INSERT INTO entities (name, entity_type, contact_info, location) VALUES
-('Global Logistics Co', 'supplier', 'contact@globallog.com', 'New York, US'),
-('Tech Manufacturing Ltd', 'manufacturer', 'info@techmfr.com', 'Shenzhen, CN'),
-('Prime Distribution', 'distributor', 'support@primedist.com', 'London, UK');
+-- Seed Entities
+TRUNCATE TABLE entities;
+INSERT INTO entities (name, entity_type, contact_info, location, rating, avg_lead_time) VALUES
+('Global Logistics Co', 'supplier', 'contact@globallog.com', 'New York, US', 4.8, 2),
+('Tech Manufacturing Ltd', 'manufacturer', 'info@techmfr.com', 'Shenzhen, CN', 4.2, 5),
+('Prime Distribution', 'distributor', 'support@primedist.com', 'London, UK', 4.5, 3);
 
--- Mock Products
+-- Seed Products
+-- Delete existing to avoid SKU duplicate errors
+DELETE FROM products WHERE sku IN ('CPU-X1', 'GPU-Z9', 'RAM-16G');
 INSERT INTO products (sku, name, description, base_price) VALUES
 ('CPU-X1', 'Core Processor X1', 'High-performance processor', 299.99),
 ('GPU-Z9', 'Graphics Unit Z9', 'Next-gen gaming GPU', 599.49),
 ('RAM-16G', 'DDR5 RAM 16GB', 'Ultra-fast memory module', 89.99);
 
--- Mock Inventory
--- Supplier has lots of CPUs
+-- Seed Inventory
+TRUNCATE TABLE inventory;
 INSERT INTO inventory (product_id, entity_id, quantity_on_hand, reorder_level) VALUES
 (1, 1, 500, 50),
--- Manufacturer is low on GPUs (Trigger Replenishment)
 (2, 2, 5, 20),
--- Distributor is low on RAM (Trigger Replenishment)
 (3, 3, 2, 10);
 
--- Mock Orders (Pending)
-INSERT INTO orders (from_entity_id, to_entity_id, status) VALUES
-(1, 2, 'pending'),
-(3, 1, 'pending'),
-(3, 2, 'pending');
+-- Seed Orders
+TRUNCATE TABLE orders;
+INSERT INTO orders (from_entity_id, to_entity_id, status, order_date) VALUES
+(1, 2, 'pending', NOW()),
+(3, 1, 'pending', DATE_SUB(NOW(), INTERVAL 1 DAY)),
+(3, 1, 'delivered', DATE_SUB(NOW(), INTERVAL 5 DAY));
 
--- Mock Order Items
+-- Seed Order Items
+TRUNCATE TABLE order_items;
 INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
 (1, 1, 10, 250.00),
 (2, 3, 5, 80.00),
-(3, 3, 2, 80.00);
--- Notice: Order 2 and 3 both go TO New York/Shenzhen from the Distributor.
--- Wait, let's look at locations: 
--- Entity 1: New York
--- Entity 2: Shenzhen
--- Entity 3: London
--- To trigger consolidation, let's make two orders go to the same location.
--- Update Order 3 to go to Entity 1 (New York) too.
-UPDATE orders SET to_entity_id = 1 WHERE order_id = 3;
+(3, 3, 12, 75.00);
+
+-- Seed Logistics
+TRUNCATE TABLE logistics;
+INSERT INTO logistics (order_id, carrier, tracking_number, shipping_status, origin_location, destination_location, shipping_cost, estimated_delivery) VALUES
+(1, 'FastShip', 'TRK-XP-9921', 'In Transit', 'London, UK', 'New York, US', 250.00, DATE_ADD(NOW(), INTERVAL 3 DAY)),
+(3, 'Dhl Express', 'TRK-DL-4412', 'Delivered', 'London, UK', 'New York, US', 180.00, DATE_SUB(NOW(), INTERVAL 1 DAY));

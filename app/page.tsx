@@ -1,98 +1,199 @@
 import { 
   getReplenishmentAnalysis, 
   getDemandVelocityAnalysis, 
-  getLogisticsConsolidation 
+  getOrdersDetailed,
+  getEntityPerformance,
+  getLogisticsAdvanced
 } from "@/lib/sql-optimization";
 
-export default async function Home() {
-  const replenishmentData: any = await getReplenishmentAnalysis();
-  const velocityData: any = await getDemandVelocityAnalysis();
-  const logisticsData: any = await getLogisticsConsolidation();
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const resolvedParams = await searchParams;
+  const search = typeof resolvedParams.search === 'string' ? resolvedParams.search : undefined;
+  const orderStatus = typeof resolvedParams.status === 'string' ? resolvedParams.status : 'all';
+
+  const [replenishment, velocity, orders, performance, logistics] = await Promise.all([
+    getReplenishmentAnalysis(),
+    getDemandVelocityAnalysis(),
+    getOrdersDetailed(search, orderStatus),
+    getEntityPerformance(),
+    getLogisticsAdvanced(),
+  ]);
 
   return (
-    <div className="min-h-screen bg-zinc-50 p-8 dark:bg-zinc-950 font-sans">
-      <header className="mb-12">
-        <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 mb-2">
-          SupplySync Dashboard
-        </h1>
-        <p className="text-zinc-600 dark:text-zinc-400">
-          Real-time Supply Chain Optimization powered by Raw MySQL.
-        </p>
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans text-zinc-900 dark:text-zinc-100 p-4 md:p-10">
+      <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <h1 className="text-5xl font-extrabold tracking-tighter mb-2 bg-gradient-to-r from-zinc-900 to-zinc-500 dark:from-zinc-100 dark:to-zinc-600 bg-clip-text text-transparent">
+            SupplySync <span className="text-indigo-600">Enterprise</span>
+          </h1>
+          <p className="text-zinc-500 font-medium">Global Supply Chain Intelligence & Fulfillment Engine</p>
+        </div>
+        
+        <form className="flex item-center gap-2 bg-white dark:bg-zinc-900 p-2 rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-800">
+          <input 
+            type="text" 
+            name="search"
+            defaultValue={search}
+            placeholder="Search products or SKU..." 
+            className="bg-transparent px-4 py-2 outline-none w-64 text-sm"
+          />
+          <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors">
+            Analyze
+          </button>
+        </form>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Inventory Replenishment */}
-        <section className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-            Inventory Replenishment Alerts
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-zinc-500 border-b border-zinc-100 dark:border-zinc-800">
-                <tr>
-                  <th className="pb-3 px-2">Product</th>
-                  <th className="pb-3 px-2">Entity</th>
-                  <th className="pb-3 px-2 text-right">Stock</th>
-                  <th className="pb-3 px-2 text-right">Recommended</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800/50">
-                {replenishmentData.map((row: any, i: number) => (
-                  <tr key={i} className="group hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
-                    <td className="py-4 px-2 font-medium text-zinc-900 dark:text-zinc-100">{row.product_name}</td>
-                    <td className="py-4 px-2 text-zinc-500 uppercase text-[10px] tracking-wider">{row.entity_name}</td>
-                    <td className="py-4 px-2 text-right text-red-600 font-semibold">{row.quantity_on_hand}</td>
-                    <td className="py-4 px-2 text-right text-green-600">+{row.recommended_order_qty}</td>
+      <div className="grid grid-cols-12 gap-6">
+        {/* TAB NAVIGATION (Simulated via Layout) */}
+        <nav className="col-span-12 flex gap-1 bg-zinc-200/50 dark:bg-zinc-900/50 p-1 rounded-2xl w-fit">
+          <button className="px-6 py-2 rounded-xl bg-white dark:bg-zinc-800 shadow-sm text-sm font-bold">Dashboard</button>
+          <button className="px-6 py-2 rounded-xl text-zinc-500 text-sm font-medium hover:bg-white/50 dark:hover:bg-zinc-800/50 transition-all">Inventory</button>
+          <button className="px-6 py-2 rounded-xl text-zinc-500 text-sm font-medium hover:bg-white/50 dark:hover:bg-zinc-800/50 transition-all">Logistics</button>
+        </nav>
+
+        {/* LEFT COLUMN: Inventory & Velocity */}
+        <div className="col-span-12 lg:col-span-4 space-y-6">
+          <section className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6">
+            <h2 className="text-lg font-bold mb-6 flex items-center justify-between">
+              Replenishment Matrix
+              <span className="text-[10px] bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded-full uppercase tracking-widest">Action Required</span>
+            </h2>
+            <div className="space-y-4">
+              {replenishment.map((row: any, i: number) => (
+                <div key={i} className="group relative overflow-hidden bg-zinc-50 dark:bg-zinc-800/30 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800/50 transition-all hover:border-indigo-500/50">
+                   <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-bold text-sm">{row.product_name}</p>
+                        <p className="text-[10px] uppercase text-zinc-400 font-mono">{row.sku}</p>
+                      </div>
+                      <p className="text-red-500 font-mono text-sm">{row.quantity_on_hand} left</p>
+                   </div>
+                   <div className="w-full bg-zinc-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-red-500 h-full" style={{ width: `${(row.quantity_on_hand / row.reorder_level) * 100}%` }}></div>
+                   </div>
+                   <p className="mt-3 text-[10px] text-zinc-500">Suggested Order: <span className="text-green-600 font-bold">+{row.recommended_order_qty} units</span></p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6">
+            <h2 className="text-lg font-bold mb-6">Stock-out Prediction</h2>
+            <div className="space-y-3">
+               {velocity.map((row: any, i: number) => (
+                 <div key={i} className="flex items-center gap-4">
+                    <div className="flex-1">
+                       <p className="text-sm font-semibold">{row.product_name}</p>
+                       <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] font-mono text-zinc-400">{Number(row.daily_velocity).toFixed(2)} / day</span>
+                          <div className="flex-1 h-1 bg-zinc-100 dark:bg-zinc-800 rounded-full"></div>
+                       </div>
+                    </div>
+                    <div className="text-right">
+                       <p className={`text-xl font-black ${row.days_until_stockout < 5 ? 'text-red-500 animate-pulse' : 'text-zinc-400'}`}>
+                         {row.days_until_stockout === 999 ? '∞' : Math.ceil(row.days_until_stockout)}
+                       </p>
+                       <p className="text-[8px] uppercase font-bold text-zinc-400">Days</p>
+                    </div>
+                 </div>
+               ))}
+            </div>
+          </section>
+        </div>
+
+        {/* CENTER COLUMN: Orders Management */}
+        <div className="col-span-12 lg:col-span-8 space-y-6">
+          <section className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+            <div className="p-6 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
+              <h2 className="text-lg font-bold">Strategic Orders Management</h2>
+              <div className="flex gap-2">
+                <a href="/?status=all" className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${orderStatus === 'all' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>All</a>
+                <a href="/?status=pending" className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${orderStatus === 'pending' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>Pending</a>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-zinc-50 dark:bg-zinc-800/50 text-zinc-400 text-[10px] uppercase tracking-wider font-bold">
+                  <tr>
+                    <th className="py-4 px-6">Order ID</th>
+                    <th className="py-4 px-6">Product</th>
+                    <th className="py-4 px-6">Route</th>
+                    <th className="py-4 px-6">Status</th>
+                    <th className="py-4 px-6 text-right">Qty</th>
                   </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {orders.map((order: any) => (
+                    <tr key={order.order_id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
+                      <td className="py-5 px-6 font-mono text-zinc-400">#ORD-{order.order_id}</td>
+                      <td className="py-5 px-6">
+                        <div className="font-bold">{order.product_name}</div>
+                        <div className="text-[10px] text-zinc-400">{order.sku}</div>
+                      </td>
+                      <td className="py-5 px-6">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-zinc-500">{order.from_entity}</span>
+                          <span className="text-indigo-600">→</span>
+                          <span className="text-xs font-medium text-zinc-500">{order.to_entity}</span>
+                        </div>
+                      </td>
+                      <td className="py-5 px-6">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                          {order.status}
+                        </span>
+                      </td>
+                      <td className="py-5 px-6 text-right font-black text-indigo-600">{order.quantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <section className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6">
+              <h2 className="text-lg font-bold mb-6">Supplier Performance</h2>
+              <div className="space-y-4">
+                {performance.map((s: any, i: number) => (
+                  <div key={i} className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/30 border border-zinc-100 dark:border-zinc-800">
+                    <div className="flex justify-between items-center mb-1">
+                      <h3 className="font-bold text-sm tracking-tight">{s.name}</h3>
+                      <span className="text-[10px] font-bold text-indigo-600">{Number(s.rating).toFixed(1)} ★</span>
+                    </div>
+                    <div className="flex justify-between text-[10px] font-medium text-zinc-500">
+                      <span>Lead Time: <span className="text-zinc-900 dark:text-zinc-100">{s.avg_lead_time} days</span></span>
+                      <span>Fulfillment: <span className="text-zinc-900 dark:text-zinc-100">{Math.round(s.fulfillment_rate)}%</span></span>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* Demand Velocity / Stock-out Prediction */}
-        <section className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">Stock-out Prediction (30d Analysis)</h2>
-          <div className="space-y-4">
-            {velocityData.map((row: any, i: number) => (
-              <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800/80">
-                <div>
-                  <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{row.product_name}</h3>
-                  <p className="text-xs text-zinc-500">Velocity: {Number(row.daily_velocity).toFixed(2)} units/day</p>
-                </div>
-                <div className="text-right">
-                  <span className={`text-lg font-bold ${row.days_until_stockout < 5 ? 'text-red-500' : 'text-zinc-900 dark:text-zinc-100'}`}>
-                    {row.days_until_stockout === 999 ? '∞' : Math.ceil(row.days_until_stockout)}
-                  </span>
-                  <p className="text-[10px] uppercase text-zinc-400">Days Remaining</p>
-                </div>
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
 
-        {/* Logistics Consolidation */}
-        <section className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm lg:col-span-2">
-          <h2 className="text-xl font-semibold mb-4">Logistics Consolidation Opportunities</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {logisticsData.map((row: any, i: number) => (
-              <div key={i} className="p-4 rounded-xl border-l-4 border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/10 dark:border-zinc-800">
-                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold uppercase mb-1">Destination: {row.destination}</p>
-                <p className="text-2xl font-bold">{row.pending_orders_count} Pending Orders</p>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">{row.total_items} items total</p>
-                <div className="mt-3 text-[10px] font-mono text-zinc-400">
-                  ID: {row.order_ids}
-                </div>
+            <section className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6">
+              <h2 className="text-lg font-bold mb-6">Logistics Flow Tracking</h2>
+              <div className="space-y-4">
+                {logistics.map((l: any, i: number) => (
+                  <div key={i} className="flex gap-4 items-start">
+                    <div className="w-1.5 h-12 bg-indigo-500 rounded-full"></div>
+                    <div>
+                      <h3 className="font-bold text-sm">{l.tracking_number}</h3>
+                      <p className="text-[10px] text-zinc-500 mb-1">{l.carrier} • Cost: ${l.shipping_cost}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-green-500 mb-0.5"></span>
+                        <span className="text-[10px] font-black uppercase text-green-600">{l.shipping_status}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </section>
           </div>
-        </section>
+        </div>
       </div>
-
-      <footer className="mt-16 text-center text-sm text-zinc-500">
-        <p>Built with Next.js, Raw MySQL & Playwright Tools.</p>
-      </footer>
     </div>
   );
 }

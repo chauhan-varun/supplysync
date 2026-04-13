@@ -2,17 +2,12 @@ import pool from './db';
 
 /**
  * 1. Inventory Replenishment Optimization
- * Identifies products that are below their reorder levels at specific entities.
  */
 export async function getReplenishmentAnalysis() {
   const sql = `
     SELECT 
-      p.name AS product_name,
-      p.sku,
-      e.name AS entity_name,
-      e.entity_type,
-      i.quantity_on_hand,
-      i.reorder_level,
+      p.name AS product_name, p.sku, e.name AS entity_name, e.entity_type,
+      i.quantity_on_hand, i.reorder_level,
       (i.reorder_level * 2 - i.quantity_on_hand) AS recommended_order_qty
     FROM inventory i
     JOIN products p ON i.product_id = p.product_id
@@ -25,14 +20,12 @@ export async function getReplenishmentAnalysis() {
 }
 
 /**
- * 2. Minimize Stock Outs (Demand Velocity)
- * Calculates the average daily demand over the last 30 days to predict potential stock outs.
+ * 2. Demand Velocity & Stock-out Prediction
  */
 export async function getDemandVelocityAnalysis() {
   const sql = `
     SELECT 
-      p.name AS product_name,
-      p.sku,
+      p.name AS product_name, p.sku,
       COALESCE(SUM(oi.quantity), 0) AS total_sold_30d,
       COALESCE(SUM(oi.quantity) / 30, 0) AS daily_velocity,
       i.quantity_on_hand,
@@ -53,81 +46,69 @@ export async function getDemandVelocityAnalysis() {
 }
 
 /**
- * 3. Logistics Optimization (Route Consolidation)
- * Identifies opportunities to consolidate shipments by grouping pending orders by destination.
+ * 3. Advanced Orders Management
  */
-export async function getLogisticsConsolidation() {
+export async function getOrdersDetailed(search?: string, status?: string) {
+  let sql = `
+    SELECT 
+      o.order_id, p.name AS product_name, p.sku, oi.quantity, o.status, o.order_date,
+      e_from.name AS from_entity, e_to.name AS to_entity
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    JOIN entities e_from ON o.from_entity_id = e_from.entity_id
+    JOIN entities e_to ON o.to_entity_id = e_to.entity_id
+    WHERE 1=1
+  `;
+  const params: any[] = [];
+
+  if (search) {
+    sql += ` AND (p.name LIKE ? OR p.sku LIKE ?)`;
+    params.push(`%${search}%`, `%${search}%`);
+  }
+  if (status && status !== 'all') {
+    sql += ` AND o.status = ?`;
+    params.push(status);
+  }
+
+  sql += ` ORDER BY o.order_date DESC`;
+  const [rows] = await pool.execute(sql, params);
+  return rows;
+}
+
+/**
+ * 4. Supplier/Manufacturer Performance View
+ */
+export async function getEntityPerformance() {
   const sql = `
     SELECT 
-      e.location AS destination,
-      COUNT(o.order_id) AS pending_orders_count,
-      SUM(oi.quantity) AS total_items,
-      GROUP_CONCAT(o.order_id) AS order_ids
-    FROM orders o
-    JOIN entities e ON o.to_entity_id = e.entity_id
-    JOIN order_items oi ON o.order_id = oi.order_id
-    WHERE o.status = 'pending'
-    GROUP BY e.location
-    HAVING pending_orders_count > 1
-    ORDER BY pending_orders_count DESC;
+      e.name, e.entity_type, e.rating, e.avg_lead_time,
+      COUNT(o.order_id) AS total_orders,
+      AVG(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) * 100 AS fulfillment_rate
+    FROM entities e
+    LEFT JOIN orders o ON e.entity_id = o.from_entity_id
+    GROUP BY e.entity_id
+    ORDER BY e.rating DESC;
   `;
   const [rows] = await pool.execute(sql);
   return rows;
 }
 
 /**
- * 4. Streamline Order Fulfillment (Transaction)
- * Custom multi-step fulfillment that updates inventory and sets order to shipped within a transaction.
+ * 5. Advanced Logistics Tracking
  */
-export async function fulfillOrder(orderId: number) {
-  const connection = await pool.getConnection();
-  try {
-    await connection.beginTransaction();
-
-    // 1. Check if order exists and is pending
-    const [orders]: any = await connection.execute(
-      'SELECT from_entity_id FROM orders WHERE order_id = ? AND status = "pending" FOR UPDATE',
-      [orderId]
-    );
-
-    if (orders.length === 0) throw new Error('Order not found or already processed');
-    const fromEntityId = orders[0].from_entity_id;
-
-    // 2. Reduce inventory for each item in the order
-    const [items]: any = await connection.execute(
-      'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
-      [orderId]
-    );
-
-    for (const item of items) {
-      const [result]: any = await connection.execute(
-        'UPDATE inventory SET quantity_on_hand = quantity_on_hand - ? WHERE product_id = ? AND entity_id = ? AND quantity_on_hand >= ?',
-        [item.quantity, item.product_id, fromEntityId, item.quantity]
-      );
-
-      if (result.affectedRows === 0) {
-        throw new Error(`Insufficient stock for product ID ${item.product_id}`);
-      }
-    }
-
-    // 3. Update order status
-    await connection.execute(
-      'UPDATE orders SET status = "shipped" WHERE order_id = ?',
-      [orderId]
-    );
-
-    // 4. Create logistics entry
-    await connection.execute(
-      'INSERT INTO logistics (order_id, carrier, tracking_number, shipping_status) VALUES (?, "Default Carrier", ?, "In Transit")',
-      [orderId, `TRK-${Math.random().toString(36).substring(2, 10).toUpperCase()}`]
-    );
-
-    await connection.commit();
-    return { success: true };
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
-  }
+export async function getLogisticsAdvanced() {
+  const sql = `
+    SELECT 
+      l.tracking_number, l.shipping_status, l.carrier, l.estimated_delivery,
+      l.shipping_cost, l.origin_location, l.destination_location,
+      o.order_id, p.name AS product_name
+    FROM logistics l
+    JOIN orders o ON l.order_id = o.order_id
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    ORDER BY l.estimated_delivery ASC;
+  `;
+  const [rows] = await pool.execute(sql);
+  return rows;
 }
